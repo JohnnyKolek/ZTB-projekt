@@ -1,0 +1,10 @@
+# Pliki uruchamiane/montowane w kontenerach Linux muszą mieć końce linii LF,
+# nawet gdy repo jest sklonowane na Windowsie (core.autocrlf=true).
+*.sh    text eol=lf
+*.conf  text eol=lf
+*.cnf   text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.sql   text eol=lf
+*.cypher text eol=lf
+.env*   text eol=lf

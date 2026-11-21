@@ -1,0 +1,25 @@
+# Lokalna konfiguracja
+infra/.env
+
+# Wygenerowane zbiory danych (dziesiątki GB – nie do repo)
+data/*
+!data/.gitkeep
+
+# Wyniki pomiarów surowe (ewentualnie commitujcie wybrane CSV ręcznie)
+results/raw/
+
+# Java / Maven / Gradle
+target/
+build/
+.gradle/
+*.class
+
+# Node / React
+node_modules/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store

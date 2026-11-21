@@ -1,0 +1,32 @@
+# Konfiguracja MariaDB dla benchmarku ZTBD
+# Założenie: kontener ma limit 6 GB RAM i 4 CPU (patrz infra/.env).
+
+[mariadb]
+max_connections = 200
+skip-name-resolve
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+default-time-zone = '+00:00'
+
+# --- Pamięć -------------------------------------------------------------
+innodb_buffer_pool_size = 3G          # cache danych: tyle samo co w pozostałych bazach
+innodb_log_file_size = 1G             # mniej flushy przy ładowaniu dużych zbiorów
+innodb_log_buffer_size = 64M
+tmp_table_size = 64M
+max_heap_table_size = 64M
+sort_buffer_size = 4M
+
+# --- Trwałość zapisu (NIE wyłączać – porównanie musi być uczciwe) -------
+innodb_flush_log_at_trx_commit = 1    # fsync przy każdym commicie, jak w PostgreSQL
+innodb_doublewrite = ON
+innodb_flush_method = O_DIRECT
+skip-log-bin                          # brak replikacji, binlog niepotrzebny
+
+# --- Uczciwość pomiarów -------------------------------------------------
+query_cache_type = 0                  # query cache zwracałby wynik bez wykonania zapytania
+query_cache_size = 0
+performance_schema = OFF
+
+# --- Import danych z ../data (LOAD DATA INFILE) -------------------------
+secure_file_priv = /data-import
+local_infile = OFF
