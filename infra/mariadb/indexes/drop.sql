@@ -1,4 +1,4 @@
--- ZTBD – usuwa indeksy z create.sql (powrót do serii "bez indeksów").
+-- ZTBD – usuwa indeksy z query.sql (wariant "none"/"fk"); db.sh uruchamia go też przed "full".
 -- PK, UNIQUE i FK (razem z indeksami FK założonymi przez InnoDB) zostają.
 DROP INDEX IF EXISTS ix_orders_status_created ON orders;
 DROP INDEX IF EXISTS ix_orders_created        ON orders;

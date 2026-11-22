@@ -1,4 +1,4 @@
--- ZTBD – usuwa indeksy z create.sql (powrót do serii "bez indeksów").
+-- ZTBD – usuwa wszystkie indeksy ix_* (wariant "none"); db.sh uruchamia go też przed "fk" i "full".
 -- PK, UNIQUE i FK zostają.
 DO $$
 DECLARE

@@ -6,8 +6,8 @@
 -- (Record_generation/generate.py, katalog sql/).
 --
 -- Celowo BEZ indeksów pomocniczych: są tylko PK, UNIQUE i FK.
--- Indeksy do drugiej serii pomiarów: infra/postgres/indexes/create.sql
--- (./scripts/db.sh indexes postgres on|off).
+-- Indeksy do kolejnych serii pomiarów: infra/postgres/indexes/ (fk.sql, query.sql, drop.sql)
+-- (./scripts/db.sh indexes postgres none|fk|full).
 --
 -- Kolejność tabel = kolejność importu (najpierw tabele nadrzędne).
 

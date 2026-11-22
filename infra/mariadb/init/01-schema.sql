@@ -8,9 +8,14 @@
 --   boolean    -> BOOLEAN (TINYINT(1))
 --   IDENTITY   -> AUTO_INCREMENT (po LOAD DATA licznik ustawia się sam na max(id)+1)
 --
+-- Kolacja utf8mb4_bin (porównanie binarne, rozróżnia wielkość liter i akcenty), tak jak
+-- PostgreSQL z locale C.UTF-8 (POSTGRES_INITDB_ARGS w docker-compose.yml), MongoDB i Neo4j.
+-- Domyślna utf8mb4_unicode_ci z benchmark.cnf dawałaby inne wyniki WHERE email = ...,
+-- LIKE i ORDER BY niż w pozostałych bazach.
+--
 -- UWAGA: InnoDB automatycznie zakłada indeks na każdej kolumnie FK (nie da się go usunąć,
 -- dopóki istnieje klucz obcy). PostgreSQL tego nie robi – patrz docs/schemat-danych.md.
--- Pozostałe indeksy: infra/mariadb/indexes/create.sql (./scripts/db.sh indexes mariadb on|off).
+-- Pozostałe indeksy: infra/mariadb/indexes/query.sql (./scripts/db.sh indexes mariadb none|fk|full).
 
 SET NAMES utf8mb4;
 
@@ -23,20 +28,20 @@ CREATE TABLE categories (
     parent_id   INT          NULL,
     name        VARCHAR(100) NOT NULL,
     CONSTRAINT fk_categories_parent FOREIGN KEY (parent_id) REFERENCES categories (id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
 
 CREATE TABLE suppliers (
     id          INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
     name        VARCHAR(200) NOT NULL,
     country     CHAR(2)      NOT NULL,
     email       VARCHAR(255) NOT NULL
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
 
 CREATE TABLE warehouses (
     id          INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
     name        VARCHAR(100) NOT NULL,
     city        VARCHAR(100) NOT NULL
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
 
 -- ---------------------------------------------------------------------
 -- Klienci
@@ -49,7 +54,7 @@ CREATE TABLE users (
     last_name   VARCHAR(100) NOT NULL,
     created_at  DATETIME(6)  NOT NULL,
     CONSTRAINT uq_users_email UNIQUE (email)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
 
 CREATE TABLE addresses (
     id          BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -60,7 +65,7 @@ CREATE TABLE addresses (
     country     CHAR(2)      NOT NULL,
     is_default  BOOLEAN      NOT NULL DEFAULT FALSE,
     CONSTRAINT fk_addresses_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
 
 -- ---------------------------------------------------------------------
 -- Katalog i magazyn
@@ -76,7 +81,7 @@ CREATE TABLE products (
     CONSTRAINT uq_products_sku UNIQUE (sku),
     CONSTRAINT ck_products_price CHECK (price >= 0),
     CONSTRAINT fk_products_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
 
 CREATE TABLE product_categories (
     product_id  BIGINT NOT NULL,
@@ -84,7 +89,7 @@ CREATE TABLE product_categories (
     PRIMARY KEY (product_id, category_id),
     CONSTRAINT fk_pc_product  FOREIGN KEY (product_id)  REFERENCES products (id) ON DELETE CASCADE,
     CONSTRAINT fk_pc_category FOREIGN KEY (category_id) REFERENCES categories (id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
 
 CREATE TABLE inventory (
     product_id   BIGINT      NOT NULL,
@@ -95,7 +100,7 @@ CREATE TABLE inventory (
     CONSTRAINT ck_inventory_quantity CHECK (quantity >= 0),
     CONSTRAINT fk_inventory_product   FOREIGN KEY (product_id)   REFERENCES products (id) ON DELETE CASCADE,
     CONSTRAINT fk_inventory_warehouse FOREIGN KEY (warehouse_id) REFERENCES warehouses (id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
 
 -- ---------------------------------------------------------------------
 -- Zamówienia i logistyka
@@ -112,7 +117,7 @@ CREATE TABLE orders (
     CONSTRAINT ck_orders_total  CHECK (total >= 0),
     CONSTRAINT fk_orders_user    FOREIGN KEY (user_id)    REFERENCES users (id),
     CONSTRAINT fk_orders_address FOREIGN KEY (address_id) REFERENCES addresses (id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
 
 -- Główna tabela skalowana (100k → 10M wierszy).
 CREATE TABLE order_items (
@@ -125,7 +130,7 @@ CREATE TABLE order_items (
     CONSTRAINT ck_order_items_price    CHECK (unit_price >= 0),
     CONSTRAINT fk_order_items_product FOREIGN KEY (product_id) REFERENCES products (id),
     CONSTRAINT fk_order_items_order   FOREIGN KEY (order_id)   REFERENCES orders (id) ON DELETE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
 
 CREATE TABLE payments (
     id          BIGINT        NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -136,7 +141,7 @@ CREATE TABLE payments (
     paid_at     DATETIME(6)   NULL,
     CONSTRAINT ck_payments_amount CHECK (amount >= 0),
     CONSTRAINT fk_payments_order FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
 
 CREATE TABLE shipments (
     id           BIGINT      NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -147,7 +152,7 @@ CREATE TABLE shipments (
     shipped_at   DATETIME(6) NULL,
     CONSTRAINT fk_shipments_order     FOREIGN KEY (order_id)     REFERENCES orders (id) ON DELETE CASCADE,
     CONSTRAINT fk_shipments_warehouse FOREIGN KEY (warehouse_id) REFERENCES warehouses (id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;
 
 CREATE TABLE reviews (
     id          BIGINT      NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -159,4 +164,4 @@ CREATE TABLE reviews (
     CONSTRAINT ck_reviews_rating CHECK (rating BETWEEN 1 AND 5),
     CONSTRAINT fk_reviews_user    FOREIGN KEY (user_id)    REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_reviews_product FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin;

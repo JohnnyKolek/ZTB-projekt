@@ -10,8 +10,9 @@
 //   * product_categories i inventory – osobne kolekcje z _id "product_id:drugi_klucz".
 // Uzasadnienie embed/reference: docs/schemat-danych.md.
 //
-// Poza _id są tu tylko indeksy UNIKALNE (odpowiedniki UNIQUE z SQL).
-// Indeksy do drugiej serii pomiarów: indexes-create.js / indexes-drop.js.
+// Poza _id są tu tylko indeksy, które w SQL są częścią schematu (PK i UNIQUE),
+// żeby seria "bez indeksów" była w każdej bazie taka sama.
+// Pozostałe indeksy: indexes-fk.js, indexes-query.js, indexes-drop.js (db.sh indexes).
 
 const INT = { bsonType: ['int', 'long'] };
 const INT_MIN = (min) => ({ bsonType: ['int', 'long'], minimum: min });
@@ -115,7 +116,15 @@ for (const [name, validator] of Object.entries(collections)) {
   }
 }
 
-// Odpowiedniki UNIQUE z SQL (w SQL też tworzą indeks, więc są w obu seriach pomiarów).
+// Odpowiedniki UNIQUE z SQL (w SQL też tworzą indeks, więc są we wszystkich wariantach).
 db.users.createIndex({ email: 1 }, { unique: true, name: 'uq_users_email' });
 db.products.createIndex({ sku: 1 }, { unique: true, name: 'uq_products_sku' });
-print('unique       users.email, products.sku');
+
+// Odpowiedniki PRIMARY KEY z SQL, których nie pokrywa _id:
+//  * order_items.id -> orders.items.id (PK pozycji; SQL ma go w PK, Neo4j w contains_id),
+//  * PK (product_id, warehouse_id/category_id) w SQL pokrywa też wyszukiwanie po samym
+//    product_id; _id "p:c" jest stringiem, więc potrzebny jest indeks na polach.
+db.orders.createIndex({ 'items.id': 1 }, { unique: true, name: 'pk_orders_items_id' });
+db.product_categories.createIndex({ product_id: 1, category_id: 1 }, { unique: true, name: 'pk_product_categories' });
+db.inventory.createIndex({ product_id: 1, warehouse_id: 1 }, { unique: true, name: 'pk_inventory' });
+print('indexes      uq_users_email, uq_products_sku, pk_orders_items_id, pk_product_categories, pk_inventory');

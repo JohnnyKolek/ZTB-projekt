@@ -4,12 +4,12 @@ Jeden model dziedziny (sklep internetowy, 13 tabel z ERD) zapisany na trzy sposo
 
 ## Gdzie co leży
 
-| Baza | Schemat | Indeksy do 2. serii | Po imporcie |
+| Baza | Schemat | Indeksy (warianty fk / full) | Po imporcie |
 |---|---|---|---|
-| PostgreSQL | `infra/postgres/init/01-schema.sql` (auto przy 1. starcie) | `infra/postgres/indexes/create.sql`, `drop.sql` | `infra/postgres/post-import.sql` |
-| MariaDB | `infra/mariadb/init/01-schema.sql` (auto przy 1. starcie) | `infra/mariadb/indexes/create.sql`, `drop.sql` | `infra/mariadb/post-import.sql` |
-| MongoDB | `infra/mongodb/schema/schema.js` | `infra/mongodb/schema/indexes-create.js`, `indexes-drop.js` | – |
-| Neo4j | `infra/neo4j/schema/constraints.cypher` | `infra/neo4j/schema/indexes-create.cypher`, `indexes-drop.cypher` | ograniczenia (ten sam plik) |
+| PostgreSQL | `infra/postgres/init/01-schema.sql` (auto przy 1. starcie) | `infra/postgres/indexes/fk.sql`, `query.sql`, `drop.sql` | `infra/postgres/post-import.sql` |
+| MariaDB | `infra/mariadb/init/01-schema.sql` (auto przy 1. starcie) | `infra/mariadb/indexes/query.sql`, `drop.sql` | `infra/mariadb/post-import.sql` |
+| MongoDB | `infra/mongodb/schema/schema.js` | `infra/mongodb/schema/indexes-fk.js`, `indexes-query.js`, `indexes-drop.js` | – |
+| Neo4j | `infra/neo4j/schema/constraints.cypher` | `infra/neo4j/schema/indexes-query.cypher`, `indexes-drop.cypher` | ograniczenia (ten sam plik) |
 
 ## Kolejność przygotowania bazy
 
@@ -30,9 +30,10 @@ Jeden model dziedziny (sklep internetowy, 13 tabel z ERD) zapisany na trzy sposo
 ./scripts/db.sh up neo4j
 ./scripts/db.sh schema neo4j
 
-# Druga seria pomiarów (z indeksami) i powrót
-./scripts/db.sh indexes <baza> on
-./scripts/db.sh indexes <baza> off
+# Warianty indeksów do pomiarów (w dowolnej kolejności)
+./scripts/db.sh indexes <baza> none     # tylko PK / UNIQUE / FK ze schematu
+./scripts/db.sh indexes <baza> fk       # + indeksy na kluczach obcych
+./scripts/db.sh indexes <baza> full     # + indeksy pod scenariusze
 ```
 
 Neo4j z Dockera da się zaimportować jednorazowym kontenerem na tym samym wolumenie (z katalogu `infra/`, baza zatrzymana). Nazwa bazy (`neo4j`, jedyna w Community) musi stać **przed** listą `--nodes`/`--relationships`, bo te opcje przyjmują wiele plików i połknęłyby ją jako plik:
@@ -45,34 +46,40 @@ docker compose --profile neo4j run --rm --no-deps neo4j \
   --relationships=PLACED=/import/<zbiór>/neo4j/rel-PLACED.csv ...
 ```
 
-## Co znaczy „bez indeksów”
+## Warianty indeksów: none, fk, full
 
-W serii bez indeksów każda baza ma tylko to, co jest częścią **schematu**, a nie optymalizacji:
+**none** to tylko to, co jest częścią **schematu**, a nie optymalizacji. Ma być takie samo we wszystkich bazach:
 
 | | PostgreSQL | MariaDB | MongoDB | Neo4j |
 |---|---|---|---|---|
-| Klucz główny | PK (indeks B-tree) | PK (indeks klastrowy) | `_id` | unikalność `id` na każdej etykiecie |
+| Klucz główny | PK (B-tree) | PK (indeks klastrowy) | `_id`, a dla PK, których `_id` nie pokrywa: `orders.items.id` (unikalny), `product_categories(product_id, category_id)`, `inventory(product_id, warehouse_id)` | unikalność `id` na każdej etykiecie i `CONTAINS.id` |
 | UNIQUE `users.email`, `products.sku` | tak | tak | indeks unikalny | ograniczenie unikalności |
-| Klucze obce | tak, **bez indeksu** | tak, **z indeksem** (InnoDB zakłada go sam) | brak (to zwykłe pola) | relacje w grafie |
+| Klucze obce | tak, **bez indeksu** | tak, **z indeksem** (InnoDB zakłada go sam) | brak (zwykłe pola) | relacje w grafie |
 
-Różnica w kolumnie MariaDB to jedyna nierówność, której nie da się usunąć: InnoDB wymaga indeksu na każdej kolumnie FK i nie pozwala go skasować, dopóki istnieje klucz obcy. Dlatego w serii bez indeksów MariaDB ma przewagę przy złączeniach po FK i przy `ON DELETE CASCADE`. Trzeba to opisać w sprawozdaniu. Alternatywa (usunąć FK z MariaDB) zmieniłaby integralność danych, więc jej nie stosujemy.
+W MongoDB indeksy odpowiadające PK są w `schema.js` (nazwy `pk_*`), bo bez nich operacja na pojedynczej pozycji zamówienia albo stanie magazynowym byłaby w serii none pełnym skanem, a w SQL i Neo4j trafiałaby w indeks klucza.
 
-Druga seria dokłada ten sam zestaw w każdej bazie (nazwy `ix_*`):
+**fk** dokłada indeksy na kolumnach FK (nazwy `ix_*`). W PostgreSQL i MongoDB to realna zmiana. W MariaDB nic się nie zmienia, bo InnoDB wymaga indeksu na każdej kolumnie FK i nie pozwala go skasować, dopóki istnieje klucz obcy. W Neo4j też nic, bo połączenie to relacja, a przejście po niej nie potrzebuje indeksu. Dzięki temu w sprawozdaniu da się rozdzielić dwa efekty: none → fk pokazuje, ile dają same indeksy FK (i tłumaczy przewagę MariaDB w serii none), a fk → full pokazuje resztę.
 
-1. indeksy na kolumnach FK (PostgreSQL, MongoDB; w MariaDB już są, w Neo4j zbędne, bo połączenie to relacja),
-2. `orders(status, created_at)`, `orders(created_at)`, `products(price)`,
-3. JSON: PostgreSQL GIN `jsonb_path_ops` na `attributes` (operator `@>`), MariaDB indeks na wirtualnej kolumnie `attr_color = JSON_VALUE(attributes,'$.color')`, MongoDB `attributes.color`. W Neo4j `attributes` jest tekstem JSON, więc scenariusze JSON porównują tylko PostgreSQL i MongoDB (tak jak w planie).
+**full** dokłada indeksy pod scenariusze, ten sam zestaw w każdej bazie:
 
-Ograniczenia unikalności w Neo4j też tworzą indeksy, ale są odpowiednikiem PK, więc zostają w obu seriach.
+1. `orders(status, created_at)`, `orders(created_at)`, `products(price)`,
+2. JSON na jednym atrybucie `attributes.color`: PostgreSQL indeks na wyrażeniu `(attributes->>'color')`, MariaDB indeks na wirtualnej kolumnie `attr_color = JSON_VALUE(attributes,'$.color')`, MongoDB `attributes.color`. W Neo4j `attributes` jest tekstem JSON, więc scenariusze JSON porównują PostgreSQL, MariaDB i MongoDB. GIN na całym `attributes` w PostgreSQL celowo pominięty, bo pokrywałby wszystkie klucze, a pozostałe bazy tylko `color`. Scenariusze JSON filtrują więc po `color`.
+
+`db.sh indexes` zawsze najpierw usuwa wszystkie `ix_*`, więc warianty można przełączać w dowolnej kolejności. W Neo4j skrypt czeka, aż wszystkie indeksy będą `ONLINE` (`db.awaitIndexes` po przekroczeniu czasu nie zgłasza błędu, a pomiar na budującym się indeksie byłby przekłamany).
+
+### Selektywność danych z generatora
+
+`status` ma 5 wartości, a `color` 3, rozłożone równomiernie. Filtr po samym statusie albo kolorze zwraca 20–33% wierszy, więc planery i tak wybiorą pełny skan i indeks nic nie pokaże. Scenariusze, które mają mierzyć efekt indeksu, powinny filtrować zakresem (`created_at`, `price`) albo statusem razem z zakresem dat. Zapytania po statusie/kolorze zostawcie jako przykład, że indeks na mało selektywnej kolumnie nie pomaga.
 
 ## Model relacyjny (PostgreSQL, MariaDB)
 
 13 tabel dokładnie jak w ERD. Typy podano w notacji PostgreSQL. W MariaDB `jsonb` → `JSON`, `timestamp` → `DATETIME(6)`, `boolean` → `BOOLEAN`, `IDENTITY` → `AUTO_INCREMENT`.
 
 - Klucze `id` są `GENERATED BY DEFAULT AS IDENTITY` / `AUTO_INCREMENT`: import wstawia gotowe id z generatora, a INSERT-y w benchmarku dostają kolejne. W PostgreSQL po imporcie trzeba przestawić sekwencje (`db.sh post-import postgres`), w MariaDB licznik przestawia się sam.
-- `ON DELETE CASCADE` jest tam, gdzie wiersz podrzędny nie ma sensu bez nadrzędnego: pozycje, płatności i wysyłki zamówienia, adresy i recenzje użytkownika, kategorie/stany/recenzje produktu. To odpowiada osadzaniu w MongoDB i `DETACH DELETE` w Neo4j. Zamówienia nie kasują się kaskadowo z użytkownikiem ani z produktem.
+- `ON DELETE CASCADE` jest tam, gdzie wiersz podrzędny nie ma sensu bez nadrzędnego: pozycje, płatności i wysyłki zamówienia, adresy i recenzje użytkownika, kategorie, stany i recenzje produktu. MongoDB i Neo4j nie mają kaskad, więc to samo trzeba zrobić jawnie w zapytaniu – patrz [Równoważne operacje DELETE](#równoważne-operacje-delete).
 - CHECK: `orders.status` ze słownika (`PENDING, PAID, SHIPPED, DELIVERED, CANCELLED`), `reviews.rating` 1–5, ilości > 0 (stan magazynu ≥ 0), kwoty ≥ 0.
 - Daty bez strefy czasowej, w UTC (serwer MariaDB ma `default-time-zone = '+00:00'`).
+- Porównanie napisów jest binarne w każdej bazie: MariaDB `utf8mb4_bin` w każdej tabeli, PostgreSQL z locale `C.UTF-8` (`POSTGRES_INITDB_ARGS` w `docker-compose.yml`), MongoDB i Neo4j porównują binarnie domyślnie. Z domyślną kolacją `utf8mb4_unicode_ci` MariaDB ignorowałaby wielkość liter i akcenty, więc `WHERE email = ...`, `LIKE` i `ORDER BY name` dawałyby inne wyniki niż w pozostałych bazach.
 
 ## Model dokumentowy (MongoDB)
 
@@ -114,6 +121,50 @@ Liczba pozycji zamówień w MongoDB to suma długości `orders.items` (nie ma ko
 - Daty to `DATETIME` w UTC.
 - Ograniczenia (`constraints.cypher`): unikalność `id` na każdej etykiecie, `User.email`, `Product.sku` i `CONTAINS.id` (to PK `order_items`). Community Edition nie ma ograniczeń istnienia, typu ani klucza (tylko Enterprise), więc wymagane pola pilnuje generator/aplikacja.
 
+## Równoważne operacje DELETE
+
+Każdy scenariusz DELETE musi usuwać **te same dane** w każdej bazie. SQL robi część pracy kaskadą, a w MongoDB i Neo4j trzeba ją wykonać jawnie. Bez tego porównanie mierzyłoby różną ilość pracy.
+
+**Zamówienie** = zamówienie + jego pozycje + płatności + wysyłki.
+
+```sql
+-- PostgreSQL / MariaDB: kaskada usuwa order_items, payments, shipments
+DELETE FROM orders WHERE id = :id;
+```
+```js
+// MongoDB: pozycje są w dokumencie, płatności i wysyłki trzeba usunąć osobno (w jednej transakcji)
+session.withTransaction(async () => {
+  await db.orders.deleteOne({ _id: id }, { session });
+  await db.payments.deleteMany({ order_id: id }, { session });
+  await db.shipments.deleteMany({ order_id: id }, { session });
+});
+```
+```cypher
+// Neo4j: samo DETACH DELETE zostawiłoby węzły Payment i Shipment jako sieroty
+MATCH (o:Order {id: $id})
+OPTIONAL MATCH (o)-[:HAS_PAYMENT|HAS_SHIPMENT]->(x)
+DETACH DELETE o, x
+```
+
+W MongoDB `deleteMany` po `order_id` bez indeksu to pełny skan `payments` i `shipments`, tak samo jak kaskada w PostgreSQL w wariancie none. Wariant fk wyrównuje to w obu bazach.
+
+**Produkt, użytkownik.** W SQL produkt z pozycjami zamówień i użytkownik z zamówieniami są **chronione** przez FK (DELETE kończy się błędem). MongoDB i Neo4j ich nie chronią: usunęłyby produkt, a Neo4j przez `DETACH DELETE` usunąłby też relacje `CONTAINS`, czyli zmieniłby zawartość zamówień. Dlatego scenariusze DELETE produktów i użytkowników dotyczą tylko wierszy **bez zamówień**. Usuwane razem z nimi dane zależne:
+
+| Usuwany | SQL (kaskada) | MongoDB (jawnie) | Neo4j (jawnie) |
+|---|---|---|---|
+| produkt | `product_categories`, `inventory`, `reviews` | `product_categories`, `inventory`, `reviews` po `product_id` | `DETACH DELETE` produktu + węzły `Review` przez `REVIEWS_PRODUCT` |
+| użytkownik | `addresses`, `reviews` | `addresses`, `reviews` po `user_id` | `DETACH DELETE` użytkownika + węzły `Address` (`HAS_ADDRESS`) i `Review` (`WROTE`) |
+| pozycja zamówienia | `DELETE FROM order_items WHERE id = :id` | `updateOne({'items.id': id}, {$pull: {items: {id}}})` | `MATCH ()-[r:CONTAINS {id: $id}]->() DELETE r` |
+
+Usunięcie pozycji zmienia sumę zamówienia. Jeśli scenariusz ma przeliczać `total`, musi to robić we wszystkich bazach.
+
+## Uwagi do sprawozdania
+
+- **Uproszczenia generatora.** Każdy produkt ma dokładnie 1 kategorię i 1 magazyn, a każdy użytkownik 1 adres (adres o tym samym id). Relacje N–M z ERD są więc w danych w praktyce 1–N, a złączenia przez `product_categories` i `inventory` są lżejsze niż w ogólnym modelu. To nie błąd schematu, tylko cecha zbioru, którą trzeba opisać (albo zmienić w generatorze).
+- **Koszt walidacji.** Walidatory `$jsonSchema` w MongoDB i CHECK w SQL kosztują przy INSERT/UPDATE. Neo4j Community nie ma odpowiednika (brak ograniczeń istnienia i typu), więc zapisuje bez tej kontroli.
+- **Rozmiar Neo4j.** Węzły trzymają kopie kluczy obcych (`Order.user_id` itd.) obok relacji, bo importer przepisuje cały wiersz. To zawyża rozmiar bazy przy porównaniu zajętości dysku. W zapytaniach używajcie relacji, bo tych właściwości nikt nie indeksuje.
+- **MariaDB i `LOAD DATA LOCAL`.** `benchmark.cnf` ma `local_infile = OFF`, a `Record_generation/Import.ps1` używa `LOAD DATA LOCAL INFILE`. Najprościej importować po stronie serwera z `/data-import` (`secure_file_priv` na to pozwala, potrzebny użytkownik z uprawnieniem FILE, np. root), z tym samym `NULLIF(@kolumna, '__ZTBD_NULL__')`.
+
 ## Mapowanie tabel
 
 | Tabela (SQL) | MongoDB | Neo4j |
@@ -143,4 +194,4 @@ Liczba pozycji zamówień w MongoDB to suma długości `orders.items` (nie ma ko
 
 ## Sprawdzone
 
-Próbka z generatora (`generate.py 3000 42`) zaimportowana do wszystkich 4 baz w kontenerach z `docker-compose.yml`: liczności zgodne z `manifest.json` (3000 pozycji w `order_items`, sumie `orders.items` i relacjach `CONTAINS`), INSERT po imporcie dostaje kolejne id, walidatory MongoDB i ograniczenia Neo4j odrzucają błędne/zdublowane dane, `indexes on/off` zakłada i usuwa indeksy we wszystkich bazach.
+Próbka z generatora (`generate.py 3000 42`) zaimportowana do wszystkich 4 baz w kontenerach z `docker-compose.yml`: liczności zgodne z `manifest.json` (3000 pozycji w `order_items`, sumie `orders.items` i relacjach `CONTAINS`), INSERT po imporcie dostaje kolejne id, walidatory MongoDB i ograniczenia Neo4j odrzucają błędne/zdublowane dane, `indexes none|fk|full` przełącza się we wszystkich bazach, operacje DELETE z sekcji wyżej usuwają w każdej bazie te same dane.

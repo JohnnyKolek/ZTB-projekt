@@ -1,5 +1,5 @@
-// ZTBD – usuwa indeksy z indexes-create.js (powrót do serii "bez indeksów").
-// _id i indeksy unikalne (uq_*) zostają.
+// ZTBD – usuwa wszystkie indeksy ix_* (wariant "none"); db.sh uruchamia go też przed "fk" i "full".
+// _id oraz indeksy ze schema.js (uq_*, pk_*) zostają.
 for (const coll of db.getCollectionNames()) {
   for (const ix of db.getCollection(coll).getIndexes()) {
     if (ix.name.startsWith('ix_')) {
