@@ -37,7 +37,9 @@ if ($Engine -eq 'mongodb') {
 }
 
 if ($Engine -eq 'neo4j') {
-    $arguments = @('database', 'import', 'full', '--id-type=integer', '--legacy-style-quoting=false')
+    # Nazwa bazy musi stać przed --nodes/--relationships: te opcje przyjmują wiele plików
+    # i nazwa na końcu zostałaby potraktowana jako plik ("Unable to find the parent of the path").
+    $arguments = @('database', 'import', 'full', $Database, '--id-type=integer', '--legacy-style-quoting=false')
     foreach ($file in Get-ChildItem -LiteralPath (Join-Path $root 'neo4j') -Filter 'node-*.csv') {
         $label = $file.BaseName.Substring(5)
         $arguments += "--nodes=${label}=$($file.FullName)"
@@ -46,7 +48,6 @@ if ($Engine -eq 'neo4j') {
         $type = $file.BaseName.Substring(4)
         $arguments += "--relationships=${type}=$($file.FullName)"
     }
-    $arguments += $Database
     Invoke-Client neo4j-admin $arguments
     return
 }
