@@ -163,7 +163,7 @@ Usunięcie pozycji zmienia sumę zamówienia. Jeśli scenariusz ma przeliczać `
 - **Uproszczenia generatora.** Każdy produkt ma dokładnie 1 kategorię i 1 magazyn, a każdy użytkownik 1 adres (adres o tym samym id). Relacje N–M z ERD są więc w danych w praktyce 1–N, a złączenia przez `product_categories` i `inventory` są lżejsze niż w ogólnym modelu. To nie błąd schematu, tylko cecha zbioru, którą trzeba opisać (albo zmienić w generatorze).
 - **Koszt walidacji.** Walidatory `$jsonSchema` w MongoDB i CHECK w SQL kosztują przy INSERT/UPDATE. Neo4j Community nie ma odpowiednika (brak ograniczeń istnienia i typu), więc zapisuje bez tej kontroli.
 - **Rozmiar Neo4j.** Węzły trzymają kopie kluczy obcych (`Order.user_id` itd.) obok relacji, bo importer przepisuje cały wiersz. To zawyża rozmiar bazy przy porównaniu zajętości dysku. W zapytaniach używajcie relacji, bo tych właściwości nikt nie indeksuje.
-- **MariaDB i `LOAD DATA LOCAL`.** `benchmark.cnf` ma `local_infile = OFF`, a `Record_generation/Import.ps1` używa `LOAD DATA LOCAL INFILE`. Najprościej importować po stronie serwera z `/data-import` (`secure_file_priv` na to pozwala, potrzebny użytkownik z uprawnieniem FILE, np. root), z tym samym `NULLIF(@kolumna, '__ZTBD_NULL__')`.
+- **MariaDB i `LOAD DATA LOCAL`.** `benchmark.cnf` ma `local_infile = ON`, a `Record_generation/Import.ps1` wywołuje klienta z `--local-infile=1`, więc `LOAD DATA LOCAL INFILE` działa po obu stronach. Ustawienie serwera wczytuje się przy starcie kontenera (`./scripts/db.sh up mariadb`), reset bazy nie jest potrzebny.
 
 ## Mapowanie tabel
 
