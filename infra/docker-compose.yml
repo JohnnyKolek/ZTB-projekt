@@ -31,6 +31,9 @@ services:
       POSTGRES_USER: ${DB_USER:-bench}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-bench_pass}
       POSTGRES_DB: ${DB_NAME:-ecommerce}
+      # Porównanie napisów binarne (kolejność kodów Unicode), jak utf8mb4_bin w MariaDB,
+      # MongoDB i Neo4j. Działa tylko przy tworzeniu pustej bazy (db.sh reset postgres).
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     shm_size: 1g                    # domyślne 64 MB to za mało dla zapytań równoległych
     ports:
