@@ -29,4 +29,4 @@ performance_schema = OFF
 
 # --- Import danych z ../data (LOAD DATA INFILE) -------------------------
 secure_file_priv = /data-import
-local_infile = OFF
+local_infile = ON                     # LOAD DATA LOCAL INFILE z Record_generation/Import.ps1
